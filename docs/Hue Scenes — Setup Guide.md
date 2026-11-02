@@ -10,6 +10,13 @@ Have these ready so the session is only clicking.
 
 - [ ] The deck file `deck/HueScenes.deck.json` in a place you can download onto his PC (email, Drive link). It is plain text; SAMMI imports it from the clipboard.
 - [ ] Open a Command Prompt on his PC during the call and run `where curl.exe`. It must print a path (ships with Windows 10 1803+ and Windows 11). The deck sends every Hue command through `curl.exe`.
+- [ ] **Only if he wants the color buttons** (**Example: color by name** / **Example: color by hex**, a color from a name or hex code): in the same Command Prompt, run the four PowerShell checks from the README, section **PowerShell for the color buttons**. In short:
+  - `where powershell.exe` prints `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`.
+  - `powershell -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"` prints `5.1.…` (3.0 or higher works).
+  - `powershell -NoProfile -Command "$ExecutionContext.SessionState.LanguageMode"` prints `FullLanguage`.
+  - The encoded test command from the README prints `PowerShell OK`. If it prints nothing or his antivirus pops up, allow that detection in the antivirus history (Windows Security → Virus & threat protection → Protection history → the `powershell.exe` entry → **Allow on device**). Do not exclude `powershell.exe` globally or turn the antivirus off.
+
+  Every other button works without PowerShell. If the checks fail and cannot be fixed, skip the color buttons; the fixed colors on **Example: color (red)** and the xy pairs still work.
 - [ ] Text him: "We'll need you at your PC for 20 minutes, with your phone, and able to reach the white Hue Bridge puck. I'll remote in with Windows Quick Assist."
 - [ ] Confirm he has SAMMI installed (2024.2.0 or newer) and his streaming platform account linked in SAMMI, so its events can be used as triggers.
 - [ ] Know what the action buttons should control: one bulb, a whole room, or a zone. If only some bulbs in a room should react, he creates a **zone** in the Hue app first (Settings → Rooms & zones → Create zone → tick the bulbs) and names it something like "Stream lights".
@@ -36,11 +43,11 @@ If Quick Assist is blocked on either side, AnyDesk or Parsec work the same way: 
 3. Open **SAMMI Core** if it isn't running (desktop icon or Start menu).
 4. If a deck named **Hue Scenes** is already there from an earlier version, delete that deck first. Pasting over it leaves old buttons behind.
 5. In SAMMI's side menu, click **Paste Deck**. (Dragging the file onto SAMMI's main window does the same.)
-6. A deck named **Hue Scenes** appears with 23 buttons. Double-click it to open it. You should see:
+6. A deck named **Hue Scenes** appears with 25 buttons. Double-click it to open it. You should see:
    - Row 1: **Hue 1: Discover**, **Hue 2: Pair**, **Hue 3: Pick Target**, **Hue 4: Test**
    - Row 2: **Hue 5: Probe**, **Hue Config: Set IP**, **Hue: Show Settings**, **Hue Scenes: how it works**
    - Row 3: **Hue: Auto rediscover**, **Hue: Link Scenes**, **Hue: Try Action**, **Hue: apply (shared)**
-   - Below a gap, the example buttons: **Example: Hue scene**, **Example: color (red)**, **Reset**, **Example: effect (candle)**; **Example: scene + candle**, **Example: orange + fire**, **Example: breathe x3**, **Example: turn off**; **Example: turn on**, **Example: scene sequence**, **Hue: Stop sequence**.
+   - Below a gap, the example buttons: **Example: Hue scene**, **Example: color (red)**, **Reset**, **Example: effect (candle)**; **Example: scene + candle**, **Example: orange + fire**, **Example: breathe x3**, **Example: turn off**; **Example: turn on**, **Example: scene sequence**, **Hue: Stop sequence**, **Example: color by name**; **Example: color by hex**.
 7. **Hue: apply (shared)** does the work for every action button. Each action button only holds its settings and calls it. Never press it and never attach a trigger to it.
 8. Right-click **Example: Hue scene** → **Edit Triggers**. The list is empty on purpose; the triggers are added in Part D once the lights work.
 9. Click **Save** at the top of the deck window. (SAMMI needs Save pressed to keep changes; do it whenever you see the button.)
@@ -72,10 +79,11 @@ If you replaced an older Hue Scenes deck: run **Hue 3: Pick Target** once more a
 ## Part D — Attach the triggers and prove it
 
 1. Run **Example: Hue scene** and **Example: color (red)** with **Run Button** the same way as above; the lights should switch to the scene, then go red, each within a second. Run **Reset** last to put them back to neutral white and stop any effect. Success is silent. Only a problem shows an alert.
-2. If he wants effects, also try **Example: effect (candle)** and **Example: scene + candle**, then **Reset**. For **Example: scene sequence** he needs Scene 1 and Scene 2 linked; **Hue: Stop sequence** stops it.
-3. Right-click **Example: Hue scene** → **Edit Triggers** → **Add**. Pick the event from his platform that should fire it (SAMMI lists every event the linked account provides) and fill in the condition: the chat command text, the redeem name, a minimum amount, whatever that event uses. Repeat for every other example button he wants, or copy an example button for every extra look he wants and change its settings (below).
-4. Fire a test event. SAMMI Bridge has a test-trigger tab for most platform events, which sends a fake event into SAMMI without anything happening on the live channel. The matching button blinks in SAMMI and the lights change. If his platform has no test trigger, do the real thing once.
-5. Click **Save** on the deck.
+2. If he wants the color buttons, run **Example: color by name** (the lights turn hot pink) and **Example: color by hex** (orange). Neither should show an alert. An alert saying "the color could not be converted" means PowerShell is blocked or missing: redo the PowerShell checks from *Before the call*. To feed them a real value, replace the example text in their `colorInput` setting with his own SAMMI variable.
+3. If he wants effects, also try **Example: effect (candle)** and **Example: scene + candle**, then **Reset**. For **Example: scene sequence** he needs Scene 1 and Scene 2 linked; **Hue: Stop sequence** stops it.
+4. Right-click **Example: Hue scene** → **Edit Triggers** → **Add**. Pick the event from his platform that should fire it (SAMMI lists every event the linked account provides) and fill in the condition: the chat command text, the redeem name, a minimum amount, whatever that event uses. Repeat for every other example button he wants, or copy an example button for every extra look he wants and change its settings (below).
+5. Fire a test event. SAMMI Bridge has a test-trigger tab for most platform events, which sends a fake event into SAMMI without anything happening on the live channel. The matching button blinks in SAMMI and the lights change. If his platform has no test trigger, do the real thing once.
+6. Click **Save** on the deck.
 
 ### Changing what an action button does
 
@@ -126,3 +134,6 @@ Leave every action button's **Persistent Variables** on; **Hue: apply (shared)**
 | Run Button works but the live event does nothing | SAMMI not connected to the platform, or the trigger's condition does not match what the event sends | Bottom-left of SAMMI: the platform must show green; reconnect it. Then right-click the button → Edit Triggers and compare the condition with the real event |
 | Everything worked, now broken days later | Bridge got a new IP from the router | Click Hue 1: Discover, then Hue 4: Test (Hue: Auto rediscover also does this 15 s after SAMMI starts) |
 | Message says "unauthorized user" | App key lost (bridge reset) | He presses the bridge button; click Hue 2: Pair |
+| A color button says "the color could not be converted" with an empty reply | PowerShell missing or blocked by antivirus | Run the PowerShell checks (*Before the call*); allow the `powershell.exe` detection in the antivirus history |
+| A color button says "the color could not be converted" with text in the reply | PowerShell restricted (`ConstrainedLanguage`) or SAMMI cannot write `hue_color_in.txt` in its folder | Check the language mode; make sure SAMMI's folder is writable. A locked-down PC cannot run the color buttons |
+| A color button says "'…' is not a color name or a hex code" | PowerShell works; the input is not a known name or 3/6 hex digits | Fix what goes into `colorInput` |

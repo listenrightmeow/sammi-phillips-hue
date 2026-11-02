@@ -291,7 +291,8 @@ def do_look():
                 set_local("lookOk", "0"),
             ]),
         ]),
-        if_("look", "==", '"color"', [set_local("known", "1"), *resolve_color(), *send(put_light_vars(COLOR_BODY)), set_local("groupSent", "1")]),
+        if_("look", "==", '"color"', [set_local("known", "1"), *resolve_color(),
+                                       if_("lookOk", "==", "1", [*send(put_light_vars(COLOR_BODY)), set_local("groupSent", "1")])]),
         if_("look", "==", '"white"', [set_local("known", "1"), *resolve_white(), *send(put_light_vars(WHITE_BODY)), set_local("groupSent", "1")]),
         if_("look", "==", '"on"', [set_local("known", "1"), *send(put_light_vars(ON_BODY)), set_local("groupSent", "1")]),
         if_("look", "==", '"off"', [
@@ -721,6 +722,150 @@ def try_action():
     ]
 
 
+# ----------------------------------------------------------------------------
+# color from text: a color name or hex code (viewer text, e.g. from OBS) -> CIE 1931 xy inside the bulbs' gamut
+# ----------------------------------------------------------------------------
+# Names the color button accepts. Lowercase letters/digits only: the input is reduced to [a-z0-9] before
+# lookup, so "Hot Pink" and "hot-pink" both find hotpink. Hex values are chosen for how they look on a
+# bulb rather than copied from CSS (CSS green 008000 is a dark green; a bulb shows chromaticity, so the
+# hex code's darkness is ignored and brightness comes from the button's setting).
+COLOR_NAMES = [
+    ("red", "ff0000"), ("crimson", "dc143c"), ("rose", "ff007f"), ("tomato", "ff6347"), ("coral", "ff7f50"),
+    ("salmon", "fa8072"), ("orange", "ff8000"), ("amber", "ffbf00"), ("gold", "ffd700"), ("yellow", "ffff00"),
+    ("lime", "bfff00"), ("chartreuse", "7fff00"), ("green", "00ff00"), ("emerald", "50c878"), ("mint", "98ff98"),
+    ("teal", "00c0a0"), ("turquoise", "40e0d0"), ("cyan", "00ffff"), ("aqua", "00ffff"), ("skyblue", "87ceeb"),
+    ("azure", "007fff"), ("blue", "0000ff"), ("royalblue", "4169e1"), ("indigo", "4b0082"), ("violet", "8f00ff"),
+    ("purple", "8000ff"), ("lavender", "b57edc"), ("magenta", "ff00ff"), ("fuchsia", "ff00ff"), ("pink", "ff80c0"),
+    ("hotpink", "ff69b4"), ("peach", "ffcba4"), ("white", "ffffff"), ("warmwhite", "ffc58f"), ("coolwhite", "e6efff"),
+]
+# Hue color gamuts (red, green, blue corners in xy), from Signify's developer docs. C is every Hue color
+# bulb sold since about 2016; A is LivingColors / LightStrips v1; B is the first Hue bulbs (2012-2015).
+GAMUTS = {"A": (0.704, 0.296, 0.2151, 0.7106, 0.138, 0.08),
+          "B": (0.675, 0.322, 0.409, 0.518, 0.167, 0.04),
+          "C": (0.6915, 0.3083, 0.17, 0.7, 0.1532, 0.0475)}
+COLOR_IN_FILE = "hue_color_in.txt"   # SAMMI folder; holds "<gamut>\n<raw input>" for one conversion
+
+# Runs through powershell.exe -EncodedCommand. The raw text never touches a command line: SAMMI writes
+# it to COLOR_IN_FILE and this fixed script reads it, so quotes, &, | or %VAR% in a chat message are
+# just characters. First thing it does is strip everything but A-Z a-z 0-9 and cap the length.
+# The JSON is assembled by hand, not with ConvertTo-Json: its first use autoloads a module, and PowerShell
+# reports that as a progress record ("Preparing modules for first use") on stderr, which SAMMI captured
+# with the reply and Parse Array/Object rejected (seen on hardware Nov 2, 2026). Every value is letters,
+# digits or a decimal, so no escaping is needed. Progress is also silenced and stderr is sent to nul.
+# Prints one JSON object with every key present (SAMMI crashes reading a missing key):
+#   {"ok":1,"x":"0.6915","y":"0.3083","input":"red","hex":"ff0000","clamped":1}   or  {"ok":0,"why":"...",...}
+COLOR_PS = r"""$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$ic=[Globalization.CultureInfo]::InvariantCulture
+function O($o){[Console]::Out.Write('{"ok":'+$o.ok+',"x":"'+$o.x+'","y":"'+$o.y+'","input":"'+$o.input+'","hex":"'+$o.hex+'","clamped":'+$o.clamped+',"why":"'+$o.why+'"}')}
+$r=@{ok=0;x='';y='';input='';hex='';clamped=0;why='error'}
+try{
+$t=[IO.File]::ReadAllText('%FILE%');$i=$t.IndexOf("`n");if($i -lt 0){$i=$t.Length}
+$g=($t.Substring(0,$i) -replace '[^ABC]','');if($g.Length -ne 1){$g='C'}
+$s=($t.Substring([Math]::Min($i+1,$t.Length)) -replace '[^A-Za-z0-9]','').ToLowerInvariant()
+if($s.Length -gt 32){$s=$s.Substring(0,32)};$r.input=$s
+$n=@{%NAMES%};$G=@{%GAMUTS%}[$g]
+if($n.ContainsKey($s)){$h=$n[$s]}else{$h=$s;if($h.Length -eq 8 -and $h.StartsWith('0x')){$h=$h.Substring(2)}}
+if($h -match '^[0-9a-f]{3}$'){$h=-join($h.ToCharArray()|%{"$_$_"})}
+if($h -notmatch '^[0-9a-f]{6}$'){$r.why='unknown';O $r;exit}
+$r.hex=$h
+$c=0..2|%{$v=[Convert]::ToInt32($h.Substring($_*2,2),16)/255;if($v -gt 0.04045){[Math]::Pow(($v+0.055)/1.055,2.4)}else{$v/12.92}}
+$X=$c[0]*0.664511+$c[1]*0.154324+$c[2]*0.162028
+$Y=$c[0]*0.283881+$c[1]*0.668433+$c[2]*0.047685
+$Z=$c[0]*0.000088+$c[1]*0.072310+$c[2]*0.986039
+$S=$X+$Y+$Z;if($S -le 0){$r.why='black';O $r;exit}
+$x=$X/$S;$y=$Y/$S
+function K($ax,$ay,$bx,$by){($bx-$ax)*($y-$ay)-($by-$ay)*($x-$ax)}
+$d1=K $G[0] $G[1] $G[2] $G[3];$d2=K $G[2] $G[3] $G[4] $G[5];$d3=K $G[4] $G[5] $G[0] $G[1]
+if(($d1 -lt 0 -or $d2 -lt 0 -or $d3 -lt 0) -and ($d1 -gt 0 -or $d2 -gt 0 -or $d3 -gt 0)){
+$best=9;$bx=0;$by=0
+foreach($e in @(@(0,1,2,3),@(2,3,4,5),@(4,5,0,1))){
+$ax=$G[$e[0]];$ay=$G[$e[1]];$dx=$G[$e[2]]-$ax;$dy=$G[$e[3]]-$ay
+$u=(($x-$ax)*$dx+($y-$ay)*$dy)/($dx*$dx+$dy*$dy);if($u -lt 0){$u=0}elseif($u -gt 1){$u=1}
+$px=$ax+$u*$dx;$py=$ay+$u*$dy;$d=($x-$px)*($x-$px)+($y-$py)*($y-$py)
+if($d -lt $best){$best=$d;$bx=$px;$by=$py}}
+$x=$bx;$y=$by;$r.clamped=1}
+$r.x=$x.ToString('0.0000',$ic);$r.y=$y.ToString('0.0000',$ic);$r.ok=1;$r.why='';O $r
+}catch{O $r}"""
+
+
+def color_ps_command():
+    import base64
+    names = ";".join(f"{n}='{h}'" for n, h in COLOR_NAMES)
+    gamuts = ";".join(f"{k}=@({','.join(str(v) for v in pts)})" for k, pts in GAMUTS.items())
+    script = COLOR_PS.replace("%FILE%", COLOR_IN_FILE).replace("%NAMES%", names).replace("%GAMUTS%", gamuts)
+    enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    line = f"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {enc} 2>nul"
+    assert len(line) < 8000, f"color command is {len(line)} chars; cmd.exe stops at 8191 (shorten COLOR_NAMES)"
+    return line
+
+
+COLOR_HOLD_MS = "1500"   # keep this run alive until the shared button has read its settings
+
+
+def color_input_button(bid, text, x, y, color, color_input):
+    """An action button whose color is text: a name from COLOR_NAMES or a hex code, in `colorInput`.
+    How that variable gets filled (OBS, chat, a webhook) is up to the streamer.
+    The text is converted to xy (clamped into the gamut) and handed to the shared apply button as
+    look color, lookValue x,y; resolve_color already accepts an x,y pair."""
+    names = ", ".join(n for n, _ in COLOR_NAMES)
+    return button(bid, text, x, y, color, [
+        comment("COLOR FROM TEXT. colorInput is a color name or a hex code such as #ff8800, ff8800 or f80. A name is "
+                "matched first; anything else is read as hex. Everything except letters and digits is stripped first, "
+                "so any viewer text is safe. Unknown text alerts and changes nothing.", 1),
+        comment("SETTINGS - edit the values below.\n"
+                "colorInput: the color - a name or a hex code. Replace the example value with your own SAMMI variable\n"
+                "gamut: C (Hue color bulbs since 2016), B (first-generation Hue bulbs) or A (LightStrips v1, LivingColors). "
+                "A color outside it is moved to the closest color the bulbs can show\n"
+                "brightness: 1-100\n"
+                f"effect: {EFFECT_CHOICES}\n"
+                "pulses / speed: as on the other action buttons\n"
+                f"color names: {names}", 2),
+        set_string("colorInput", color_input),
+        set_string("gamut", "C"),
+        set_string("brightness", "100"),
+        set_string("effect", "none"),
+        set_local("pulses", "1"),
+        set_string("speed", "0.5"),
+        comment("END OF SETTINGS.", 2),
+        set_string("colorIn", "/$colorInput$/"),
+        set_string("g", "C"),
+        if_("gamut", "==", '"A"', [set_string("g", "A")]),
+        if_("gamut", "==", '"B"', [set_string("g", "B")]),
+        comment("The raw text goes to a file, never onto a command line. The fixed PowerShell script below reads it, "
+                "strips it to letters and digits, looks the name up or reads it as hex, converts to xy and clamps it.", 1),
+        file_append(COLOR_IN_FILE, " "),            # creates the file on the first run, so Delete File has something to delete
+        file_delete(COLOR_IN_FILE),
+        file_append(COLOR_IN_FILE, "/$g$/\n/$colorIn$/"),
+        *send(color_ps_command()),
+        str_pos("okPos", "/$resp$/", '"ok":1'),
+        if_("okPos", ">", "0", [
+            parse("cc", "/$resp$/"),
+            set_string("look", "color"),
+            set_string("lookValue", "/$cc.x$/,/$cc.y$/"),
+            str_pos("badXy", "/$lookValue$/", "undefined"),
+            if_("badXy", ">", "0", [
+                alert("Hue: PowerShell's reply could not be read, nothing was sent (reply: '/$resp$/'). "
+                      "See 'PowerShell for the color buttons' in the README."),
+            ], [
+                trigger_button(APPLY_ID, 0, queueable=True),
+                wait_ms(COLOR_HOLD_MS),
+            ]),
+        ], [
+            str_pos("isBlack", "/$resp$/", '"why":"black"'),
+            str_pos("isUnknown", "/$resp$/", '"why":"unknown"'),
+            if_("isBlack", ">", "0", [alert("Hue: black cannot be shown as a color. Use look off instead.")], [
+                if_("isUnknown", ">", "0", [
+                    parse("cc", "/$resp$/"),
+                    alert(f"Hue: '/$cc.input$/' is not a color name or a hex code. Use #rrggbb, #rgb or one of: {names}."),
+                ], [
+                    alert("Hue: the color could not be converted, PowerShell did not run or failed (reply: '/$resp$/'). "
+                          "Empty reply = PowerShell was blocked or missing. See 'PowerShell for the color buttons' in the README."),
+                ]),
+            ]),
+        ]),
+        trigger_button("hueReset", 10000, disabled=True),
+    ], queueable=True, persistent=True)
+
+
 SEQ_GROUP = "hueSeq"
 
 
@@ -1040,6 +1185,8 @@ BUTTONS = [
     action_button("hueBreathe", "Example:\nbreathe x3", 0.5, TEAL, effect="breathe", pulses=3, y=0.625),
     action_button("hueOff", "Example:\nturn off", 0.75, DARK, look="off", effect="none", y=0.625),
     action_button("hueOn", "Example:\nturn on", 0.0, WARM, look="on", y=0.75),
+    color_input_button("hueColorName", "Example:\ncolor by name", 0.75, 0.75, BLUE, "Hot Pink!"),
+    color_input_button("hueColorHex", "Example:\ncolor by hex", 0.0, 0.875, BLUE, "#FF8800"),
     sequence_button("hueSequence", "Example:\nscene sequence", 0.25, 0.75, BLUE, effect2="candle"),
     button("hueStopSequence", "Hue: Stop\nsequence", 0.5, 0.75, GRAY, [
         comment("Stops every running sequence (button group 'hueSeq') and drops queued steps, including action buttons "
@@ -1133,17 +1280,36 @@ def listing(buttons):
 README_START, README_END = "<!-- deck-json:start -->", "<!-- deck-json:end -->"
 
 
+COLORS_START, COLORS_END = "<!-- color-names:start -->", "<!-- color-names:end -->"
+# How a multi-word name reads; the button strips spaces, so either form works.
+COLOR_SPOKEN = {"royalblue": "royal blue", "skyblue": "sky blue", "hotpink": "hot pink",
+                "warmwhite": "warm white", "coolwhite": "cool white"}
+
+
+def color_names_table():
+    """The README table of every name the color buttons accept, straight from COLOR_NAMES."""
+    first = {}
+    for n, h in COLOR_NAMES:
+        first.setdefault(h, n)
+    rows = ["| Name | Also typed as | Hex | Note |", "| --- | --- | --- | --- |"]
+    for n, h in COLOR_NAMES:
+        note = f"same as `{first[h]}`" if first[h] != n else ""
+        rows.append(f"| `{n}` | {COLOR_SPOKEN.get(n, '')} | `#{h}` | {note} |")
+    return "\n".join(rows)
+
+
 def inject_readme(deck_json):
-    """Keep the copy-paste block in README.md in sync with the generated deck."""
+    """Keep the copy-paste block and the color-name table in README.md in sync with the generated deck."""
     readme = ROOT / "README.md"
     if not readme.exists():
         return
     text = readme.read_text(encoding="utf-8")
-    a, b = text.find(README_START), text.find(README_END)
-    if a < 0 or b < 0:
-        return
-    block = f"{README_START}\n```json\n{deck_json}\n```\n"
-    readme.write_text(text[:a] + block + text[b:], encoding="utf-8")
+    for start, end, body in ((README_START, README_END, f"```json\n{deck_json}\n```"),
+                             (COLORS_START, COLORS_END, color_names_table())):
+        a, b = text.find(start), text.find(end)
+        if a >= 0 and b >= 0:
+            text = text[:a] + f"{start}\n{body}\n" + text[b:]
+    readme.write_text(text, encoding="utf-8")
 
 
 def main():

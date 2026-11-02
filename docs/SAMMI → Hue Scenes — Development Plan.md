@@ -77,7 +77,7 @@ Rate guidance from Hue: ≤ 10 light commands/sec; grouped lights ≤ 1/sec. Sou
 
 ## SAMMI deck design
 
-The deck carries its own setup so the remote session is clicks, not typing. One deck, 23 buttons in six rows. Built by `tools/build_deck.py`, which runs `tools/audit_deck.py` first and writes nothing if the audit fails; `deck/HueScenes.commands.md` is the readable listing.
+The deck carries its own setup so the remote session is clicks, not typing. One deck, 25 buttons in seven rows. Built by `tools/build_deck.py`, which runs `tools/audit_deck.py` first and writes nothing if the audit fails; `deck/HueScenes.commands.md` is the readable listing.
 
 **Settings** (written by the setup buttons, read by every other button): `hue_scenes.ini` → `[hue]` `ip`, `key`, `light` (id of a light **or** a grouped_light), `light_type` (`light` / `grouped_light`), `light_name`, `group_id` (room/zone id, `none` for a bulb), `group_kind` (`room` / `zone` / `none`), and per scene slot 1–4 `scene_<n>`, `scene_<n>_name` and `scene_<n>_light` (the grouped_light of the scene's room or zone).
 
@@ -115,6 +115,7 @@ The deck carries its own setup so the remote session is clicks, not typing. One 
 | Example: turn off | off / (empty = target) | 100 | none |
 | Example: turn on | on | 100 | none |
 | Example: scene sequence | see below | | |
+| Example: color by name / color by hex | `colorInput` = `Hot Pink!` / `#FF8800` → xy via PowerShell, gamut C | 100 | none |
 | Hue: Stop sequence | Stop Button/Group `hueSeq` (ongoing and queued), then drop queued `hueApply` runs → Alert | | |
 
 Each action button is: a comment, the SETTINGS block, `Trigger Button hueApply` (queueable), then a switched-off `Trigger Button hueReset` after 10 s (all but Reset). Turn that last command on for a 10 s auto-reset.
@@ -199,7 +200,7 @@ Run locally in Phase 2 with Run Button, then repeat rows 5–8 on the user's PC 
 
 | # | Test | Expected |
 | --- | --- | --- |
-| 0 | Delete any older Hue Scenes deck; paste deck into SAMMI; open Edit Triggers on Example: Hue scene | Deck imports with 23 buttons; trigger list empty, no errors |
+| 0 | Delete any older Hue Scenes deck; paste deck into SAMMI; open Edit Triggers on Example: Hue scene | Deck imports with 25 buttons; trigger list empty, no errors |
 | 1 | Hue 1: Discover | `hue_scenes.ini` has `ip` = the bridge's LAN IP; alert shows it |
 | 2 | Hue 2: Pair without pressing the bridge button | Popup shows "link button not pressed" error |
 | 3 | Hue 2: Pair within 30 s of pressing the button | `key` saved; Alert "Paired" |
@@ -219,6 +220,7 @@ Run locally in Phase 2 with Run Button, then repeat rows 5–8 on the user's PC 
 | 16 | Example: breathe x3; Example: turn off; Example: turn on | Three pulses about 2 s apart; target off; target on |
 | 17 | Example: scene sequence with whenDone loop, off, stay, and maxMinutes 1 | Scenes alternate with their effects; off turns the scenes' rooms off; loop with maxMinutes stops and turns off after about 1 min |
 | 18 | Start the sequence twice; then Hue: Stop sequence | Second start stops the first; Stop ends it, drops queued steps, alerts "sequence stopped" |
+| 18b | Color buttons: run the README's four PowerShell checks, then Example: color by name and Example: color by hex; then set `colorInput` to `zzz`, `#000` and `"; del /q *` | `PowerShell OK` and `FullLanguage`; hot pink, then orange, no alert; `zzz` and `delq` alert "not a color name or a hex code", `#000` alerts black; nothing else runs |
 | 19 | Upgrade from an older install: run Hue 3 and Link Scenes again, then an effect on a scene | `group_kind` and `scene_<n>_light` present; effect runs |
 
 ## Handoff and maintenance

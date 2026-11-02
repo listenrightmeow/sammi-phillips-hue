@@ -6,7 +6,7 @@ For the person whose lights these are. Keep this somewhere you can find it. Ever
 
 ## What it does
 
-The example buttons in SAMMI change your Hue lights. **Example: Hue scene** switches them to a scene from your Hue app; **Example: color (red)** sets a fixed color. Others add an effect such as candle or fire, pulse the lights, turn them on or off, or play two scenes in a loop (**Example: scene sequence**, stopped with **Hue: Stop sequence**). **Reset** puts them back to neutral white. Whatever trigger was attached to each button during setup (a chat command, a redeem, a tip, a hotkey) fires it. SAMMI sends small commands to the Hue Bridge in your room. Nothing goes through the cloud. When it works, nothing pops up; a message only appears when something is wrong.
+The example buttons in SAMMI change your Hue lights. **Example: Hue scene** switches them to a scene from your Hue app; **Example: color (red)** sets a fixed color. Others add an effect such as candle or fire, pulse the lights, turn them on or off, or play two scenes in a loop (**Example: scene sequence**, stopped with **Hue: Stop sequence**). **Example: color by name** and **Example: color by hex** set a color from text, a name such as `hot pink` or a hex code such as `#ff8800`. **Reset** puts them back to neutral white. Whatever trigger was attached to each button during setup (a chat command, a redeem, a tip, a hotkey) fires it. SAMMI sends small commands to the Hue Bridge in your room. Nothing goes through the cloud. When it works, nothing pops up; a message only appears when something is wrong.
 
 ## The one fix to try first
 
@@ -30,6 +30,7 @@ If they pulse, you are done. If not, text Mike.
 | A linked scene was deleted in the Hue app | Test works, that one button does nothing or says "no scene linked" | Make the scene again, then run **Hue: Link Scenes** and type its number (or text Mike) |
 | An effect such as candle keeps running | The lights flicker after the event | Run **Reset**; it stops the effect |
 | A scene sequence keeps going | The scenes keep switching | Run **Hue: Stop sequence** |
+| Antivirus started blocking PowerShell (often after an antivirus update) | A color-by-name or color-by-hex button says "the color could not be converted"; every other button still works | Open your antivirus history (Windows Security → Virus & threat protection → Protection history), find the `powershell.exe` entry, choose **Allow on device**. If unsure, text Mike |
 | SAMMI was reinstalled | Deck is gone | Text Mike; he has a backup of the deck |
 
 ## Want different colors?
@@ -49,5 +50,6 @@ If you are comfortable in SAMMI: right-click an example button → Edit Commands
 - Don't delete or rename buttons in the Hue Scenes deck.
 - Don't press **Hue: apply (shared)** or attach a trigger to it. Every action button uses it.
 - Don't turn off **Persistent Variables** on an action button. The shared button reads the settings from it.
+- `hue_color_in.txt` in the SAMMI folder is scratch space for the color-by-name and color-by-hex buttons. Deleting it is harmless.
 - Don't delete the file `hue_scenes.ini` in the SAMMI folder. It holds the bridge address, the app key, which lights to use and which scene each button recalls.
 - Don't rename or delete the linked scenes in the Hue app. Editing their colors is fine and encouraged.
